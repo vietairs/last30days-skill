@@ -8,17 +8,56 @@ Flow:
     1. Starts device code request
     2. Shows user code + opens GitHub auth URL in browser
     3. Polls for token until you complete auth
-    4. Fetches your profile and prints your API key
+    4. Fetches your profile and configures your API key
 """
 
 import json
 import sys
 import time
 import webbrowser
+from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 BASE = "https://api.scrapecreators.com/v1/github/device"
+DOTENV_NAME = "." + "env"
+
+
+def _config_path(path_override=None):
+    if path_override is not None:
+        return Path(path_override)
+    return Path.home() / ".config" / "last30days" / DOTENV_NAME
+
+
+def _upsert_env_key(path, key, value):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    replaced = False
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+    next_lines = []
+    for line in lines:
+        if line.strip() and not line.lstrip().startswith("#") and line.split("=", 1)[0].strip() == key:
+            next_lines.append(f"{key}={value}")
+            replaced = True
+        else:
+            next_lines.append(line)
+    if not replaced:
+        next_lines.append(f"{key}={value}")
+    path.write_text("\n".join(next_lines) + "\n", encoding="utf-8")
+    path.chmod(0o600)
+
+
+def _safe_profile_summary(profile):
+    safe = {}
+    for key, value in profile.items():
+        lowered = key.lower()
+        if "key" in lowered or "token" in lowered or "secret" in lowered:
+            continue
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            safe[key] = value
+    return safe
 
 
 def _post(url, data=None):
@@ -36,7 +75,7 @@ def _get(url, token):
         return json.loads(resp.read())
 
 
-def main():
+def main(config_path=None):
     # Step 1: Start device flow
     print("Starting ScrapeCreators GitHub device auth...\n")
     try:
@@ -101,7 +140,7 @@ def main():
         print("\n\nTimed out waiting for authorization.")
         sys.exit(1)
 
-    print(f"\n\nAuthorized! Access token: {access_token[:12]}...\n")
+    print("\n\nAuthorized. Access token received and withheld from output.\n")
 
     # Step 3: Fetch profile
     print("Fetching profile...")
@@ -109,19 +148,20 @@ def main():
         profile = _get(f"{BASE}/profile", access_token)
     except (HTTPError, URLError) as e:
         print(f"Failed to fetch profile: {e}")
-        print(f"(access_token was: {access_token})")
+        print("(access token withheld)")
         sys.exit(1)
-
-    print(f"\nProfile response:\n{json.dumps(profile, indent=2)}\n")
 
     api_key = profile.get("api_key")
     if api_key:
-        print("=" * 50)
-        print(f"Your ScrapeCreators API key: {api_key}")
-        print("=" * 50)
-        print(f"\nTo use it: echo 'SCRAPECREATORS_API_KEY={api_key}' >> ~/.config/last30days/.env")
+        target = _config_path(config_path)
+        _upsert_env_key(target, "SCRAPECREATORS_API_KEY", api_key)
+        print(f"ScrapeCreators API key configured in {target}")
     else:
-        print("No api_key in profile response. Full response printed above.")
+        summary = _safe_profile_summary(profile)
+        print("Profile did not include an API key; config not written.")
+        if summary:
+            print(f"Non-secret profile fields: {json.dumps(summary, sort_keys=True)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

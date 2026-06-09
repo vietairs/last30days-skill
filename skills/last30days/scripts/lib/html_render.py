@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import re
 from datetime import date
+from urllib.parse import urlsplit
 
 from . import render, schema
 
@@ -596,6 +597,19 @@ def _promote_meta_marker(body: str) -> str:
 _ENGINE_FOOTER_STORE: dict[str, str] = {}
 
 
+def _safe_link_href(raw_href: str) -> str | None:
+    decoded = raw_href
+    for _ in range(5):
+        next_decoded = html.unescape(decoded).strip()
+        if next_decoded == decoded:
+            break
+        decoded = next_decoded
+    parts = urlsplit(decoded)
+    if parts.scheme.lower() not in {"http", "https", "mailto"}:
+        return None
+    return html.escape(decoded, quote=True)
+
+
 def _inline_markdown(text: str) -> str:
     escaped = html.escape(text, quote=True)
     code_tokens: dict[str, str] = {}
@@ -607,11 +621,15 @@ def _inline_markdown(text: str) -> str:
 
     escaped = re.sub(r"`([^`]+)`", code_replace, escaped)
     escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
-    escaped = re.sub(
-        r"\[([^\]]+)\]\(([^)\s]+)\)",
-        r'<a href="\2">\1</a>',
-        escaped,
-    )
+    def link_replace(match: re.Match[str]) -> str:
+        label = match.group(1)
+        href = match.group(2)
+        safe_href = _safe_link_href(href)
+        if safe_href is None:
+            return f"{label} ({href})"
+        return f'<a href="{safe_href}">{label}</a>'
+
+    escaped = re.sub(r"\[([^\]]+)\]\(([^)\s]*)\)", link_replace, escaped)
     for token, value in code_tokens.items():
         escaped = escaped.replace(token, value)
     return escaped

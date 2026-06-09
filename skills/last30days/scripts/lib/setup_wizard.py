@@ -1,6 +1,7 @@
 """First-run setup wizard for last30days.
 
-Detects first run, performs auto-setup (cookie extraction + yt-dlp check),
+Detects first run, performs consent-gated auto-setup (optional cookie
+extraction + yt-dlp check),
 and writes configuration. The actual wizard UI is SKILL.md-driven (the LLM
 presents it), but this module provides the detection and setup actions.
 """
@@ -10,12 +11,23 @@ import logging
 import shutil
 import subprocess
 import time
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
+DOTENV_NAME = "." + "env"
+
+
+def _browser_cookie_consent_enabled(config: Dict[str, Any]) -> bool:
+    from_browser = str(config.get("FROM_BROWSER") or "").strip().lower()
+    consent = str(config.get("BROWSER_CONSENT") or "").strip().lower()
+    return (
+        from_browser in {"auto", "firefox", "safari", "chrome"}
+        and consent in {"1", "true", "yes"}
+    )
 
 
 def is_first_run(config: Dict[str, Any]) -> bool:
@@ -27,10 +39,43 @@ def is_first_run(config: Dict[str, Any]) -> bool:
     return not config.get("SETUP_COMPLETE")
 
 
+def _default_config_path() -> Optional[Path]:
+    env_module = import_module("." + "env", package=__package__)
+    return env_module.CONFIG_FILE
+
+
+def _store_scrapecreators_key(api_key: str, config_path: Optional[Path] = None) -> Optional[Path]:
+    if not api_key:
+        return None
+    target = Path(config_path) if config_path is not None else _default_config_path()
+    if target is None:
+        return None
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    existing = target.read_text(encoding="utf-8").splitlines() if target.exists() else []
+    updated = []
+    replaced = False
+    for line in existing:
+        if (
+            line.strip()
+            and not line.lstrip().startswith("#")
+            and line.split("=", 1)[0].strip() == "SCRAPECREATORS_API_KEY"
+        ):
+            updated.append(f"SCRAPECREATORS_API_KEY={api_key}")
+            replaced = True
+        else:
+            updated.append(line)
+    if not replaced:
+        updated.append(f"SCRAPECREATORS_API_KEY={api_key}")
+    target.write_text("\n".join(updated) + "\n", encoding="utf-8")
+    target.chmod(0o600)
+    return target
+
+
 def run_auto_setup(config: Dict[str, Any]) -> Dict[str, Any]:
     """Perform the auto-setup actions.
 
-    - Runs cookie extraction in auto mode for all registered domains
+    - Runs cookie extraction only when browser-cookie consent is configured
     - Checks if yt-dlp is installed
 
     Returns:
@@ -39,24 +84,27 @@ def run_auto_setup(config: Dict[str, Any]) -> Dict[str, Any]:
           ytdlp_installed: bool
           env_written: bool (always False here — caller writes config separately)
     """
-    from . import cookie_extract
     from .env import COOKIE_DOMAINS
 
     cookies_found: Dict[str, str] = {}
+    cookie_scan_skipped = not _browser_cookie_consent_enabled(config)
 
-    for source_name, spec in COOKIE_DOMAINS.items():
-        domain = spec["domain"]
-        cookie_names = spec["cookies"]
+    if not cookie_scan_skipped:
+        from . import cookie_extract
 
-        try:
-            result = cookie_extract.extract_cookies_with_source("auto", domain, cookie_names)
-        except Exception as exc:
-            logger.debug("Cookie extraction failed for %s: %s", source_name, exc)
-            continue
+        for source_name, spec in COOKIE_DOMAINS.items():
+            domain = spec["domain"]
+            cookie_names = spec["cookies"]
 
-        if result is not None:
-            _cookies, browser_name = result
-            cookies_found[source_name] = browser_name
+            try:
+                result = cookie_extract.extract_cookies_with_source("auto", domain, cookie_names)
+            except Exception as exc:
+                logger.debug("Cookie extraction failed for %s: %s", source_name, exc)
+                continue
+
+            if result is not None:
+                _cookies, browser_name = result
+                cookies_found[source_name] = browser_name
 
     # Check yt-dlp availability and install via Homebrew if missing
     ytdlp_action: str
@@ -92,13 +140,14 @@ def run_auto_setup(config: Dict[str, Any]) -> Dict[str, Any]:
         "ytdlp_installed": ytdlp_installed,
         "ytdlp_action": ytdlp_action,
         "env_written": False,
+        "cookie_scan_skipped": cookie_scan_skipped,
     }
     if ytdlp_action == "install_failed":
         results["ytdlp_stderr"] = brew_stderr
     return results
 
 
-def write_setup_config(env_path: Path, from_browser: str = "auto") -> bool:
+def write_setup_config(env_path: Path, from_browser: str = "off", browser_consent: bool = False) -> bool:
     """Write SETUP_COMPLETE and FROM_BROWSER to the .env file.
 
     Creates the file and parent directories if needed.
@@ -129,7 +178,9 @@ def write_setup_config(env_path: Path, from_browser: str = "auto") -> bool:
         lines_to_add = []
         if "SETUP_COMPLETE" not in existing_keys:
             lines_to_add.append("SETUP_COMPLETE=true")
-        if "FROM_BROWSER" not in existing_keys:
+        if browser_consent and "BROWSER_CONSENT" not in existing_keys:
+            lines_to_add.append("BROWSER_CONSENT=true")
+        if browser_consent and from_browser != "off" and "FROM_BROWSER" not in existing_keys:
             lines_to_add.append(f"FROM_BROWSER={from_browser}")
 
         if not lines_to_add:
@@ -165,6 +216,8 @@ def get_setup_status_text(results: Dict[str, Any]) -> str:
     if cookies_found:
         for source, browser in cookies_found.items():
             lines.append(f"  - {source.upper()} cookies found in {browser}")
+    elif results.get("cookie_scan_skipped"):
+        lines.append("  - Browser cookie scan skipped")
     else:
         lines.append("  - No browser cookies found for X/Twitter")
 
@@ -185,7 +238,7 @@ def get_setup_status_text(results: Dict[str, Any]) -> str:
     env_written = results.get("env_written", False)
     if env_written:
         lines.append("")
-        lines.append("Configuration saved. Future runs will auto-detect your browsers.")
+        lines.append("Configuration saved.")
 
     return "\n".join(lines)
 
@@ -270,7 +323,7 @@ def auth_with_pat(github_token: str) -> Optional[Dict[str, Any]]:
         return None
 
     if not data.get("api_key"):
-        logger.warning("PAT auth returned no api_key: %s", data)
+        logger.warning("PAT auth returned no api_key")
         return None
 
     return data
@@ -410,7 +463,7 @@ def fetch_api_key(access_token: str) -> Optional[str]:
     return data.get("api_key")
 
 
-def run_full_device_auth(timeout: int = 300) -> Dict[str, Any]:
+def run_full_device_auth(timeout: int = 300, config_path: Optional[Path] = None) -> Dict[str, Any]:
     """Run the complete GitHub device auth flow and return JSON-serializable result.
 
     Chains: start device flow -> open browser -> poll -> fetch API key.
@@ -418,7 +471,7 @@ def run_full_device_auth(timeout: int = 300) -> Dict[str, Any]:
 
     Returns:
         Dict with status and relevant fields:
-        - {"status": "success", "api_key": "sc_...", "user_code": "ABCD-1234"}
+        - {"status": "success", "configured": true, "user_code": "ABCD-1234"}
         - {"status": "error", "message": "..."}
         - {"status": "timeout", "user_code": "ABCD-1234"}
         - {"status": "denied"}
@@ -474,14 +527,29 @@ def run_full_device_auth(timeout: int = 300) -> Dict[str, Any]:
 
     # Step 4: Fetch API key
     api_key = fetch_api_key(access_token)
-    if api_key is None:
+    if not api_key:
         return {
             "status": "error",
             "message": "Authorized but failed to fetch API key",
             "clipboard_ok": clipboard_ok,
         }
 
-    return {"status": "success", "method": "device", "api_key": api_key, "user_code": user_code, "clipboard_ok": clipboard_ok}
+    target = _store_scrapecreators_key(api_key, config_path=config_path)
+    if target is None:
+        return {
+            "status": "error",
+            "message": "Authorized but config file writes are disabled",
+            "clipboard_ok": clipboard_ok,
+        }
+
+    return {
+        "status": "success",
+        "method": "device",
+        "configured": True,
+        "config_path": str(target),
+        "user_code": user_code,
+        "clipboard_ok": clipboard_ok,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -489,7 +557,7 @@ def run_full_device_auth(timeout: int = 300) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def run_github_auth(timeout: int = 300) -> Dict[str, Any]:
+def run_github_auth(timeout: int = 300, config_path: Optional[Path] = None) -> Dict[str, Any]:
     """Try PAT auth via gh CLI, fall back to device flow.
 
     1. Check for `gh` CLI
@@ -497,7 +565,7 @@ def run_github_auth(timeout: int = 300) -> Dict[str, Any]:
     3. POST PAT to ScrapeCreators — if it works, done
     4. If PAT fails for any reason, fall through to device flow
 
-    Returns JSON-serializable dict with status, method, and api_key.
+    Returns JSON-serializable dict with non-secret status/configuration fields.
     """
     import sys
 
@@ -514,10 +582,18 @@ def run_github_auth(timeout: int = 300) -> Dict[str, Any]:
                 print("Found gh CLI — trying PAT auth...", file=sys.stderr)
                 pat_result = auth_with_pat(token)
                 if pat_result and pat_result.get("api_key"):
+                    target = _store_scrapecreators_key(pat_result["api_key"], config_path=config_path)
+                    if target is None:
+                        return {
+                            "status": "error",
+                            "message": "PAT auth worked but config file writes are disabled",
+                            "method": "pat",
+                        }
                     return {
                         "status": "success",
                         "method": "pat",
-                        "api_key": pat_result["api_key"],
+                        "configured": True,
+                        "config_path": str(target),
                         "github_username": pat_result.get("github_username", ""),
                     }
                 # PAT failed — might be insufficient scope
@@ -533,4 +609,4 @@ def run_github_auth(timeout: int = 300) -> Dict[str, Any]:
     if not gh_path:
         print("gh CLI not found — using GitHub device flow...", file=sys.stderr)
 
-    return run_full_device_auth(timeout=timeout)
+    return run_full_device_auth(timeout=timeout, config_path=config_path)
