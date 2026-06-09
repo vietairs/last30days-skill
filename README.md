@@ -28,7 +28,7 @@ npx skills add mvanhorn/last30days-skill -g
 
 More install options (claude.ai web, OpenClaw, manual) in the [Install](#install) section below.
 
-Zero config. Reddit, HN, Polymarket, and GitHub work immediately. Run it once and the setup wizard unlocks X, YouTube, TikTok, and more in 30 seconds.
+Zero config. Reddit, HN, Polymarket, and GitHub work immediately. Run it once and the setup wizard checks local tools and points you to optional X, YouTube, TikTok, and web-search unlocks.
 
 ---
 
@@ -247,7 +247,7 @@ ln -s "$(pwd)/last30days-skill/skills/last30days" ~/.claude/skills/last30days
 
 The symlink keeps the install in sync with your working tree as you edit — no re-copy needed. For `claude.ai`, build the `.skill` file from source: `bash skills/last30days/scripts/build-skill.sh` produces `dist/last30days.skill`.
 
-Reddit (with comments), Hacker News, Polymarket, and GitHub work immediately. Zero configuration. Run `/last30days` once and the setup wizard unlocks more sources in 30 seconds.
+Reddit (with comments), Hacker News, Polymarket, and GitHub work immediately. Zero configuration. Run `/last30days` once and the setup wizard checks local tools and points you to optional source unlocks.
 
 ## Bring your own keys
 
@@ -256,7 +256,7 @@ These platforms don't have relationships with each other. X doesn't know what Re
 | Sources | What you need | Cost |
 |---------|---------------|------|
 | Reddit (with comments) + HN + Polymarket + GitHub | Nothing | Free |
-| X / Twitter | Log into x.com in any browser | Free |
+| X / Twitter | `XAI_API_KEY`, explicit `AUTH_TOKEN` + `CT0`, or opt-in `FROM_BROWSER` cookie scan | Free or paid depending on method |
 | YouTube | `brew install yt-dlp` | Free |
 | Bluesky | App password from bsky.app | Free |
 | TikTok + Instagram + Threads + Pinterest + YouTube comments | ScrapeCreators key | 100 free credits, then PAYG |

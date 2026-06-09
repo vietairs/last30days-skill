@@ -45,7 +45,8 @@ last30days "AI news" --days=7 --deep
 On first run, the skill will guide you through setup:
 
 1. **Auto setup** (~30 seconds)
-   - Scans browser cookies for X/Twitter
+   - Checks local YouTube tooling
+   - Browser-cookie scans for X/Twitter run only after explicit opt-in
    - Checks/installs yt-dlp for YouTube
    - Configures free sources (Reddit, HN, Polymarket)
 
@@ -55,7 +56,7 @@ On first run, the skill will guide you through setup:
    - Sign up at scrapecreators.com
 
 3. **Optional: API Keys**
-   - XAI_API_KEY for X/Twitter (alternative to browser cookies)
+   - XAI_API_KEY for X/Twitter (alternative to explicit browser-cookie opt-in)
    - BRAVE_API_KEY for web search
 
 ## Available Sources
@@ -67,7 +68,7 @@ On first run, the skill will guide you through setup:
 - **YouTube** - Search and transcripts (requires yt-dlp)
 
 ### Requires API Key
-- **X/Twitter** - xAI API key or browser cookies
+- **X/Twitter** - xAI API key, explicit AUTH_TOKEN/CT0, or opt-in browser cookies
 - **TikTok** - ScrapeCreators API
 - **Instagram** - ScrapeCreators API
 - **Web Search** - Brave Search API

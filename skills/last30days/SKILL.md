@@ -245,7 +245,7 @@ If your Bash call to `last30days.py` does NOT include the FULL pre-flight checkl
 
 # last30days v3.3.2: Research Any Topic from the Last 30 Days
 
-> **Permissions overview:** Reads public web/platform data and optionally saves research briefings to `LAST30DAYS_MEMORY_DIR` (defaults to `~/Documents/Last30Days`). X/Twitter search uses optional user-provided tokens (AUTH_TOKEN/CT0 env vars). Bluesky search uses optional app password (BSKY_HANDLE/BSKY_APP_PASSWORD env vars - create at bsky.app/settings/app-passwords). All credential usage and data writes are documented in the [Security & Permissions](#security--permissions) section.
+> **Permissions overview:** Reads public web/platform data and optionally saves research briefings to `LAST30DAYS_MEMORY_DIR` (defaults to `~/Documents/Last30Days`). X/Twitter search uses optional user-provided tokens (AUTH_TOKEN/CT0 env vars), optional xAI/ScrapeCreators keys, or an explicit `FROM_BROWSER` browser-cookie opt-in. Bluesky search uses optional app password (BSKY_HANDLE/BSKY_APP_PASSWORD env vars - create at bsky.app/settings/app-passwords). All credential usage and data writes are documented in the [Security & Permissions](#security--permissions) section.
 
 Research ANY topic across Reddit, X, YouTube, and other sources. Surface what people are actually discussing, recommending, betting on, and debating right now.
 
@@ -328,7 +328,7 @@ Common patterns:
 - Always active: Reddit, Hacker News, Polymarket
 - If gh CLI is installed (check `which gh`): add GitHub
 - If digg-pp-cli is installed (check `which digg-pp-cli`): add Digg
-- If AUTH_TOKEN/CT0 or XAI_API_KEY or FROM_BROWSER is set, or xurl CLI is installed and authenticated: add X
+- If AUTH_TOKEN/CT0 or XAI_API_KEY is set, explicit FROM_BROWSER opt-in is set, or xurl CLI is installed and authenticated: add X
 - If yt-dlp is installed (check `which yt-dlp`): add YouTube
 - If SCRAPECREATORS_API_KEY is set: add TikTok, Instagram, Threads (suppress any of these via EXCLUDE_SOURCES)
 - If SCRAPECREATORS_API_KEY is set and the user explicitly requested pinterest for this query (e.g. via `--search=pinterest`): add Pinterest
@@ -1684,7 +1684,7 @@ Want another prompt? Just tell me what you're creating next.
 **What this skill does:**
 - Sends search queries to ScrapeCreators API (`api.scrapecreators.com`) for TikTok and Instagram search, and as a Reddit backup when public Reddit is unavailable (requires SCRAPECREATORS_API_KEY)
 - Legacy: Sends search queries to OpenAI's Responses API (`api.openai.com`) for Reddit discovery (fallback if no SCRAPECREATORS_API_KEY)
-- Sends search queries to Twitter's GraphQL API (via optional user-provided AUTH_TOKEN/CT0 env vars - no browser session access), xAI's API (`api.x.ai`), or the official X API v2 via xurl CLI (OAuth2, auto-detected when installed and authenticated) for X search
+- Sends search queries to Twitter's GraphQL API (via optional user-provided AUTH_TOKEN/CT0 env vars or explicit FROM_BROWSER browser-cookie opt-in), xAI's API (`api.x.ai`), or the official X API v2 via xurl CLI (OAuth2, auto-detected when installed and authenticated) for X search
 - Sends search queries to Algolia HN Search API (`hn.algolia.com`) for Hacker News story and comment discovery (free, no auth)
 - Sends search queries to Polymarket Gamma API (`gamma-api.polymarket.com`) for prediction market discovery (free, no auth)
 - Runs `yt-dlp` locally for YouTube search and transcript extraction (no API key, public data)
