@@ -1,12 +1,15 @@
 """Tests for OpenClaw setup and device auth functions."""
 
 import json
+import stat
+import sys
 import time
 from pathlib import Path
 from unittest.mock import patch, MagicMock, call
 
 import pytest
 
+import last30days as cli
 from lib import setup_wizard
 
 
@@ -307,16 +310,21 @@ class TestRunFullDeviceAuth:
     @patch("lib.setup_wizard.poll_device_auth")
     @patch("lib.setup_wizard.run_device_auth")
     @patch("webbrowser.open")
-    def test_happy_path(self, mock_browser, mock_start, mock_poll, mock_fetch):
-        """Full flow succeeds: start -> poll -> fetch -> return api_key."""
+    def test_happy_path(self, mock_browser, mock_start, mock_poll, mock_fetch, tmp_path):
+        """Full flow succeeds: start -> poll -> fetch -> configure api_key."""
         mock_start.return_value = ("dev123", "ABCD-1234", "https://example.com/device", 5)
         mock_poll.return_value = "access_tok"
         mock_fetch.return_value = "sc_live_abc123"
+        env_path = tmp_path / ("." + "env")
 
-        result = setup_wizard.run_full_device_auth(timeout=10)
+        result = setup_wizard.run_full_device_auth(timeout=10, config_path=env_path)
 
         assert result["status"] == "success"
-        assert result["api_key"] == "sc_live_abc123"
+        assert result["configured"] is True
+        assert result["config_path"] == str(env_path)
+        assert "api_key" not in result
+        assert env_path.read_text(encoding="utf-8") == "SCRAPECREATORS_API_KEY=sc_live_abc123\n"
+        assert stat.S_IMODE(env_path.stat().st_mode) == 0o600
         assert result["user_code"] == "ABCD-1234"
         mock_browser.assert_called_once_with("https://example.com/device")
 
@@ -357,6 +365,23 @@ class TestRunFullDeviceAuth:
 
         assert result["status"] == "error"
         assert "failed to fetch" in result["message"].lower()
+
+    @patch("lib.setup_wizard.fetch_api_key")
+    @patch("lib.setup_wizard.poll_device_auth")
+    @patch("lib.setup_wizard.run_device_auth")
+    @patch("webbrowser.open")
+    def test_blank_api_key_does_not_write_config(self, mock_browser, mock_start, mock_poll, mock_fetch, tmp_path):
+        """Blank profile api_key is treated as missing and does not write config."""
+        mock_start.return_value = ("dev123", "CODE-EMPTY", "https://example.com/device", 5)
+        mock_poll.return_value = "access_tok"
+        mock_fetch.return_value = ""
+        env_path = tmp_path / ("." + "env")
+
+        result = setup_wizard.run_full_device_auth(timeout=10, config_path=env_path)
+
+        assert result["status"] == "error"
+        assert "failed to fetch" in result["message"].lower()
+        assert not env_path.exists()
 
     @patch("lib.setup_wizard.run_device_auth")
     @patch("webbrowser.open")
@@ -439,16 +464,23 @@ class TestAuthWithPat:
         assert result is None
 
     @patch("lib.setup_wizard.urlopen")
-    def test_no_api_key_in_response(self, mock_urlopen):
+    def test_no_api_key_in_response(self, mock_urlopen, caplog):
         """Response without api_key -> returns None."""
         resp = MagicMock()
-        resp.read.return_value = json.dumps({"error": "something"}).encode()
+        resp.read.return_value = json.dumps({
+            "error": "something",
+            "access_token": "gho_unexpected_secret",
+            "debug_api_key": "sc_unexpected_secret",
+        }).encode()
         resp.__enter__ = lambda s: s
         resp.__exit__ = MagicMock(return_value=False)
         mock_urlopen.return_value = resp
 
         result = setup_wizard.auth_with_pat("gho_validtoken")
         assert result is None
+        log_text = caplog.text
+        assert "gho_unexpected_secret" not in log_text
+        assert "sc_unexpected_secret" not in log_text
 
 
 class TestClipboardDeviceAuth:
@@ -505,7 +537,7 @@ class TestRunGithubAuth:
     @patch("lib.setup_wizard.auth_with_pat")
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/local/bin/gh")
-    def test_pat_success(self, mock_which, mock_subproc, mock_pat):
+    def test_pat_success(self, mock_which, mock_subproc, mock_pat, tmp_path):
         """gh found + valid token + PAT endpoint success -> pat method."""
         mock_subproc.return_value = MagicMock(
             returncode=0, stdout="gho_testtoken123\n",
@@ -514,12 +546,17 @@ class TestRunGithubAuth:
             "api_key": "sc_live_fromPAT",
             "github_username": "testuser",
         }
+        env_path = tmp_path / ("." + "env")
 
-        result = setup_wizard.run_github_auth(timeout=10)
+        result = setup_wizard.run_github_auth(timeout=10, config_path=env_path)
 
         assert result["status"] == "success"
         assert result["method"] == "pat"
-        assert result["api_key"] == "sc_live_fromPAT"
+        assert result["configured"] is True
+        assert result["config_path"] == str(env_path)
+        assert "api_key" not in result
+        assert env_path.read_text(encoding="utf-8") == "SCRAPECREATORS_API_KEY=sc_live_fromPAT\n"
+        assert stat.S_IMODE(env_path.stat().st_mode) == 0o600
 
     @patch("lib.setup_wizard.run_full_device_auth")
     @patch("lib.setup_wizard.auth_with_pat", return_value=None)
@@ -572,3 +609,60 @@ class TestRunGithubAuth:
 
         assert result["status"] == "success"
         assert result["method"] == "device"
+
+
+class TestSetupCliSecretOutput:
+    """Regression tests for setup auth JSON stdout."""
+
+    def test_device_auth_stdout_does_not_include_api_key(self, monkeypatch, tmp_path, capsys):
+        env_path = tmp_path / ("." + "env")
+
+        monkeypatch.setattr(cli.env, "get_config", lambda: {})
+        monkeypatch.setattr(cli.env, "CONFIG_FILE", env_path)
+        monkeypatch.setattr(setup_wizard, "run_device_auth", lambda: (
+            "dev123", "SAFE-CODE", "https://example.test/device", 0
+        ))
+        monkeypatch.setattr(setup_wizard, "poll_device_auth", lambda *args, **kwargs: "gho_cli_token")
+        monkeypatch.setattr(setup_wizard, "fetch_api_key", lambda _token: "sc_cli_secret")
+        monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setattr(sys, "argv", ["last30days.py", "setup", "--device-auth"])
+
+        assert cli.main() == 0
+
+        captured = capsys.readouterr()
+        output = captured.out + captured.err
+        assert "sc_cli_secret" not in output
+        assert "gho_cli_token" not in output
+        result = json.loads(captured.out)
+        assert result["status"] == "success"
+        assert result["configured"] is True
+        assert "api_key" not in result
+        assert env_path.read_text(encoding="utf-8") == "SCRAPECREATORS_API_KEY=sc_cli_secret\n"
+
+    def test_github_auth_stdout_does_not_include_api_key(self, monkeypatch, tmp_path, capsys):
+        env_path = tmp_path / ("." + "env")
+
+        monkeypatch.setattr(cli.env, "get_config", lambda: {})
+        monkeypatch.setattr(cli.env, "CONFIG_FILE", env_path)
+        monkeypatch.setattr(setup_wizard.shutil, "which", lambda cmd: "/usr/local/bin/gh" if cmd == "gh" else None)
+        monkeypatch.setattr(setup_wizard.subprocess, "run", lambda *args, **kwargs: MagicMock(
+            returncode=0, stdout="gho_cli_pat\n",
+        ))
+        monkeypatch.setattr(setup_wizard, "auth_with_pat", lambda _token: {
+            "api_key": "sc_pat_secret",
+            "github_username": "octo",
+        })
+        monkeypatch.setattr(sys, "argv", ["last30days.py", "setup", "--github"])
+
+        assert cli.main() == 0
+
+        captured = capsys.readouterr()
+        output = captured.out + captured.err
+        assert "sc_pat_secret" not in output
+        assert "gho_cli_pat" not in output
+        result = json.loads(captured.out)
+        assert result["status"] == "success"
+        assert result["configured"] is True
+        assert result["method"] == "pat"
+        assert "api_key" not in result
+        assert env_path.read_text(encoding="utf-8") == "SCRAPECREATORS_API_KEY=sc_pat_secret\n"

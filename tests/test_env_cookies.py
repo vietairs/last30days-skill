@@ -55,17 +55,13 @@ class TestExtractBrowserCredentials:
         mock_extract.assert_not_called()
 
     @patch("lib.cookie_extract.extract_cookies")
-    def test_no_from_browser_defaults_to_silent(self, mock_extract):
-        """Default (no FROM_BROWSER): tries Firefox and Safari only, skips Chrome."""
+    def test_no_from_browser_skips_extraction(self, mock_extract):
+        """Default (no FROM_BROWSER): does not read local browser cookie stores."""
         mock_extract.return_value = None
         config = _base_config()
         result = extract_browser_credentials(config)
         assert result == {}
-        # Should try firefox and safari but NOT chrome
-        browser_args = [call[0][0] for call in mock_extract.call_args_list]
-        assert "firefox" in browser_args
-        assert "safari" in browser_args
-        assert "chrome" not in browser_args
+        mock_extract.assert_not_called()
 
     @patch("lib.cookie_extract.extract_cookies")
     def test_from_browser_firefox_only(self, mock_extract):
@@ -130,3 +126,23 @@ class TestGetConfigCookieIntegration:
             config = get_config()
         assert config["AUTH_TOKEN"] == "browser_tok"
         assert config["CT0"] == "browser_ct0"
+
+    @patch("lib.cookie_extract.extract_cookies")
+    def test_get_config_without_from_browser_does_not_read_cookies(self, mock_extract):
+        env_module = __import__("lib." + "env", fromlist=["get_config", "OpenAIAuth"])
+
+        mock_extract.return_value = {"auth_token": "browser_tok", "ct0": "browser_ct0"}
+        mock_auth = env_module.OpenAIAuth(
+            token=None, source="none", status="missing",
+            account_id=None, codex_auth_file="/fake",
+        )
+        with patch.object(env_module, "_find_project_env", return_value=None), \
+             patch.object(env_module, "load_env_file", return_value={}), \
+             patch.object(env_module, "_load_keychain", return_value={}), \
+             patch.object(env_module, "get_openai_auth", return_value=mock_auth), \
+             patch.dict(os.environ, {"LAST30DAYS_CONFIG_DIR": ""}, clear=False):
+            config = env_module.get_config()
+
+        assert config["AUTH_TOKEN"] is None
+        assert config["CT0"] is None
+        mock_extract.assert_not_called()

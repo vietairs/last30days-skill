@@ -192,6 +192,27 @@ class HtmlRenderBehaviorTests(unittest.TestCase):
         rendered = html_render._markdown_to_html("[name](https://example.test/path)")
         self.assertIn('<a href="https://example.test/path">name</a>', rendered)
 
+    def test_markdown_mailto_links_convert(self):
+        rendered = html_render._markdown_to_html("[mail](mailto:hello@example.test)")
+        self.assertIn('<a href="mailto:hello@example.test">mail</a>', rendered)
+
+    def test_unsafe_markdown_link_schemes_do_not_convert(self):
+        unsafe_inputs = [
+            "[x](javascript:alert(1))",
+            "[x](JaVaScRiPt:alert(1))",
+            "[x](&#106;avascript:alert(1))",
+            "[x](&amp;#106;avascript:alert(1))",
+            "[x](data:text/html,hello)",
+            "[x](vbscript:msgbox(1))",
+            "[x](/relative/path)",
+            "[x]()",
+        ]
+        for md in unsafe_inputs:
+            with self.subTest(md=md):
+                rendered = html_render._markdown_to_html(md)
+                self.assertNotIn("<a href=", rendered)
+                self.assertIn("x", rendered)
+
     def test_no_file_header_h1(self):
         rendered = html_render.render_html(_report("AI agent frameworks", ["One"]))
         self.assertNotIn("<h1>last30days v", rendered)

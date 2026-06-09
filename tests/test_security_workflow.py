@@ -16,13 +16,15 @@ def test_security_workflow_exists() -> None:
     assert WORKFLOW.is_file()
 
 
-def test_security_workflow_runs_dependency_audit_advisory_first() -> None:
+def test_security_workflow_runs_dependency_audit_as_blocking_gate() -> None:
     text = _workflow_text()
 
     assert "dependency-audit:" in text
     assert "pip-audit" in text
-    assert "continue-on-error: true" in text
-    assert "Set continue-on-error: false once a clean baseline run is confirmed" in text
+    assert "--format requirements-txt" in text
+    dep_job = text.split("dependency-audit:", 1)[1].split("secret-scan:", 1)[0]
+    assert "continue-on-error: true" not in dep_job
+    assert "clean baseline run is confirmed" in dep_job
 
 
 def test_security_workflow_runs_secret_scan_for_pull_requests_and_main_pushes() -> None:
@@ -35,13 +37,15 @@ def test_security_workflow_runs_secret_scan_for_pull_requests_and_main_pushes() 
     assert "--only-verified" in text
 
 
-def test_security_workflow_documents_advisory_policy() -> None:
+def test_security_workflow_documents_blocking_policy() -> None:
     text = _workflow_text()
 
-    assert "advisory-first" in text.lower()
-    assert "does not block merges" in text.lower()
+    assert "blocking policy" in text.lower()
+    assert "verified secrets block merges" in text.lower()
     assert "fixtures" in text.lower()
     assert "env-based auth" in text.lower()
+    secret_job = text.split("secret-scan:", 1)[1]
+    assert "continue-on-error: true" not in secret_job
 
 
 def test_agent_guidance_mentions_secret_hygiene() -> None:

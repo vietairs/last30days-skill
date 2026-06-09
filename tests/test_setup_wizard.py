@@ -41,6 +41,9 @@ class TestIsFirstRun:
 class TestRunAutoSetup:
     """Tests for run_auto_setup()."""
 
+    def _cookie_consent_config(self):
+        return {"BROWSER_CONSENT": "true", "FROM_BROWSER": "auto"}
+
     @patch("lib.cookie_extract.extract_cookies_with_source")
     @patch("shutil.which")
     def test_cookies_found(self, mock_which, mock_extract):
@@ -48,7 +51,7 @@ class TestRunAutoSetup:
         mock_extract.return_value = ({"auth_token": "abc", "ct0": "xyz"}, "chrome")
         mock_which.return_value = "/usr/local/bin/yt-dlp"
 
-        config = {}
+        config = self._cookie_consent_config()
         results = setup_wizard.run_auto_setup(config)
 
         assert "x" in results["cookies_found"]
@@ -64,7 +67,7 @@ class TestRunAutoSetup:
         mock_extract.return_value = None
         mock_which.return_value = None
 
-        config = {}
+        config = self._cookie_consent_config()
         results = setup_wizard.run_auto_setup(config)
 
         assert results["cookies_found"] == {}
@@ -78,7 +81,7 @@ class TestRunAutoSetup:
         mock_extract.side_effect = Exception("DB locked")
         mock_which.return_value = None
 
-        config = {}
+        config = self._cookie_consent_config()
         results = setup_wizard.run_auto_setup(config)
 
         assert results["cookies_found"] == {}
@@ -97,11 +100,23 @@ class TestRunAutoSetup:
         mock_extract.side_effect = side_effect
         mock_which.return_value = None
 
-        config = {}
+        config = self._cookie_consent_config()
         results = setup_wizard.run_auto_setup(config)
 
         assert results["cookies_found"]["x"] == "firefox"
         assert results["cookies_found"]["truthsocial"] == "firefox"
+
+    @patch("lib.cookie_extract.extract_cookies_with_source")
+    @patch("shutil.which")
+    def test_default_auto_setup_skips_cookie_scan(self, mock_which, mock_extract):
+        """Auto setup does not read browser cookies without explicit consent."""
+        mock_which.return_value = "/usr/local/bin/yt-dlp"
+
+        results = setup_wizard.run_auto_setup({})
+
+        assert results["cookies_found"] == {}
+        assert results["cookie_scan_skipped"] is True
+        mock_extract.assert_not_called()
 
 
 class TestYtdlpAutoInstall:
@@ -187,7 +202,7 @@ class TestWriteSetupConfig:
             assert env_path.exists()
             content = env_path.read_text()
             assert "SETUP_COMPLETE=true" in content
-            assert "FROM_BROWSER=auto" in content
+            assert "FROM_BROWSER" not in content
 
     def test_appends_to_existing_file(self):
         """Appends to existing .env without overwriting keys."""
@@ -204,7 +219,7 @@ class TestWriteSetupConfig:
             assert "AUTH_TOKEN=tok123" in content
             # New keys appended
             assert "SETUP_COMPLETE=true" in content
-            assert "FROM_BROWSER=auto" in content
+            assert "FROM_BROWSER" not in content
 
     def test_does_not_overwrite_existing_keys(self):
         """If SETUP_COMPLETE or FROM_BROWSER already exist, don't duplicate."""
@@ -227,10 +242,11 @@ class TestWriteSetupConfig:
         with tempfile.TemporaryDirectory() as tmpdir:
             env_path = Path(tmpdir) / ".env"
 
-            result = setup_wizard.write_setup_config(env_path, from_browser="chrome")
+            result = setup_wizard.write_setup_config(env_path, from_browser="chrome", browser_consent=True)
 
             assert result is True
             content = env_path.read_text()
+            assert "BROWSER_CONSENT=true" in content
             assert "FROM_BROWSER=chrome" in content
 
     def test_creates_parent_directories(self):
@@ -255,7 +271,7 @@ class TestWriteSetupConfig:
             content = env_path.read_text()
             # Should have newline separator
             lines = content.strip().split("\n")
-            assert len(lines) == 3
+            assert len(lines) == 2
             assert lines[0] == "EXISTING_KEY=value"
             assert "SETUP_COMPLETE=true" in lines[1]
 
