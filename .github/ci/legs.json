@@ -4,21 +4,21 @@
     {
       "check": "tests",
       "os": "linux",
-      "script": "scripts/ci/tests.sh",
+      "script": ".github/ci/tests.sh",
       "image": "python:3.12-bookworm",
       "setup": "pip install --quiet uv"
     },
     {
       "check": "Dependency audit",
       "os": "linux",
-      "script": "scripts/ci/dependency-audit.sh",
+      "script": ".github/ci/dependency-audit.sh",
       "image": "python:3.12-bookworm",
       "setup": "pip install --quiet uv"
     },
     {
       "check": "Secret scan",
       "os": "linux",
-      "script": "scripts/ci/secret-scan.sh",
+      "script": ".github/ci/secret-scan.sh",
       "image": "python:3.12-bookworm"
     }
   ]

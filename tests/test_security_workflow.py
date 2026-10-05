@@ -8,7 +8,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "security.yml"
 AGENTS = ROOT / "AGENTS.md"
 
 
-CI_SCRIPTS = ROOT / "scripts" / "ci"
+CI_SCRIPTS = ROOT / ".github" / "ci"
 
 
 def _workflow_text() -> str:
@@ -28,7 +28,7 @@ def test_security_workflow_runs_dependency_audit_as_blocking_gate() -> None:
     script = _script_text("dependency-audit.sh")
 
     assert "dependency-audit:" in text
-    assert "scripts/ci/dependency-audit.sh" in text
+    assert ".github/ci/dependency-audit.sh" in text
     assert "pip-audit" in script
     assert "--format requirements-txt" in script
     dep_job = text.split("dependency-audit:", 1)[1].split("secret-scan:", 1)[0]
@@ -41,7 +41,7 @@ def test_security_workflow_runs_secret_scan_for_pull_requests_and_main_pushes() 
     script = _script_text("secret-scan.sh")
 
     assert "secret-scan:" in text
-    assert "scripts/ci/secret-scan.sh" in text
+    assert ".github/ci/secret-scan.sh" in text
     assert "  pull_request:" in text
     assert "  push:" in text
     assert "trufflesecurity/trufflehog" in script

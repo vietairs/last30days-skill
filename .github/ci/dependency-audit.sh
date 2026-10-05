@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # CI job "Dependency audit": export the locked dependency set and run pip-audit on it.
-# Runs from the repo root; shared by .github/workflows/security.yml and scripts/local-ci.mjs.
+# Runs from the repo root; shared by .github/workflows/security.yml and .github/ci/local-ci.mjs.
 set -euo pipefail
 
 out_dir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"

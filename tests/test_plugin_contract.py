@@ -52,9 +52,7 @@ class TestPluginContract(unittest.TestCase):
         offenders = []
         for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
             for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-                # scripts/ci/ holds the shared CI job scripts that workflows and
-                # scripts/local-ci.mjs both run; the removed root scripts dir is not that.
-                if "scripts/" in line and "skills/last30days/scripts/" not in line and "scripts/ci/" not in line:
+                if "scripts/" in line and "skills/last30days/scripts/" not in line:
                     offenders.append(f"{path.relative_to(ROOT)}:{line_number}: {line.strip()}")
 
         self.assertEqual([], offenders)

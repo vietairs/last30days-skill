@@ -3,7 +3,7 @@
 # Runs the pinned release binary directly instead of the trufflesecurity/trufflehog
 # action, because the action needs Docker, which the self-hosted Linux runner and the
 # local container do not have. Runs from the repo root; shared by
-# .github/workflows/security.yml and scripts/local-ci.mjs.
+# .github/workflows/security.yml and .github/ci/local-ci.mjs.
 # Contributor policy: never commit real secrets in fixtures, tests, docs, or
 # examples; use obvious dummy values and env-based auth patterns instead.
 #

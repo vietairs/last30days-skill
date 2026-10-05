@@ -11,9 +11,8 @@ permissions:
 
 jobs:
   tests:
-    runs-on: [self-hosted, Linux, X64]
-    # Public fork: never run PRs from outside forks on self-hosted hardware.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Public fork: PRs from outside forks fall back to GitHub-hosted runners.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,4 +21,4 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Run test suite
-        run: bash scripts/ci/tests.sh
+        run: bash .github/ci/tests.sh
