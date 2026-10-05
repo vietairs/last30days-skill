@@ -64,6 +64,16 @@ def test_secret_scan_pull_request_range_passes_head_branch() -> None:
         assert f"{name}: ${{{{ github.event." in secret_job
 
 
+def test_secret_scan_fails_when_range_ends_are_identical() -> None:
+    script = _script_text("secret-scan.sh")
+
+    # The replaced action failed on BASE == HEAD; a silent pass would hide a
+    # re-run that scanned nothing.
+    assert '"${PR_BASE_SHA:-}" = "${PR_HEAD_SHA:-}"' in script
+    assert '"$PUSH_BEFORE" = "$PUSH_AFTER"' in script
+    assert "nothing to scan" in script
+
+
 def test_secret_scan_verifies_pinned_binary_checksum() -> None:
     script = _script_text("secret-scan.sh")
 

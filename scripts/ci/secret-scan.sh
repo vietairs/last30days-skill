@@ -58,12 +58,22 @@ fi
 zeros="0000000000000000000000000000000000000000"
 case "${GITHUB_EVENT_NAME:-}" in
   pull_request)
+    if [ -n "${PR_BASE_SHA:-}" ] && [ "${PR_BASE_SHA:-}" = "${PR_HEAD_SHA:-}" ]; then
+      # Same failure the trufflesecurity/trufflehog action raised: a range with
+      # identical ends would scan nothing and pass.
+      echo "secret-scan: BASE and HEAD commits are the same, so there is nothing to scan." >&2
+      exit 1
+    fi
     if [ -n "${PR_BASE_SHA:-}" ] && [ -n "${PR_HEAD_SHA:-}" ]; then
       args+=(--since-commit "$PR_BASE_SHA" --branch "$PR_HEAD_SHA")
     fi
     ;;
   push)
     if [ -n "${PUSH_AFTER:-}" ]; then
+      if [ -n "${PUSH_BEFORE:-}" ] && [ "$PUSH_BEFORE" = "$PUSH_AFTER" ]; then
+        echo "secret-scan: BASE and HEAD commits are the same, so there is nothing to scan." >&2
+        exit 1
+      fi
       args+=(--branch "$PUSH_AFTER")
       if [ -n "${PUSH_BEFORE:-}" ] && [ "$PUSH_BEFORE" != "$zeros" ]; then
         args+=(--since-commit "$PUSH_BEFORE")

@@ -6,6 +6,12 @@ set -euo pipefail
 out_dir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 requirements="$out_dir/last30days-requirements.txt"
 
+# On a persistent self-hosted runner keep uv's Python installs and caches job-scoped.
+if [ -n "${RUNNER_TEMP:-}" ]; then
+  export UV_PYTHON_INSTALL_DIR="${UV_PYTHON_INSTALL_DIR:-$RUNNER_TEMP/uv-python}"
+  export UV_CACHE_DIR="${UV_CACHE_DIR:-$RUNNER_TEMP/uv-cache}"
+fi
+
 uv python install 3.12
 
 uv export \
