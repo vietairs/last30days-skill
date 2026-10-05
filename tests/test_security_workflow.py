@@ -8,8 +8,15 @@ WORKFLOW = ROOT / ".github" / "workflows" / "security.yml"
 AGENTS = ROOT / "AGENTS.md"
 
 
+CI_SCRIPTS = ROOT / "scripts" / "ci"
+
+
 def _workflow_text() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
+
+
+def _script_text(name: str) -> str:
+    return (CI_SCRIPTS / name).read_text(encoding="utf-8")
 
 
 def test_security_workflow_exists() -> None:
@@ -18,10 +25,12 @@ def test_security_workflow_exists() -> None:
 
 def test_security_workflow_runs_dependency_audit_as_blocking_gate() -> None:
     text = _workflow_text()
+    script = _script_text("dependency-audit.sh")
 
     assert "dependency-audit:" in text
-    assert "pip-audit" in text
-    assert "--format requirements-txt" in text
+    assert "scripts/ci/dependency-audit.sh" in text
+    assert "pip-audit" in script
+    assert "--format requirements-txt" in script
     dep_job = text.split("dependency-audit:", 1)[1].split("secret-scan:", 1)[0]
     assert "continue-on-error: true" not in dep_job
     assert "clean baseline run is confirmed" in dep_job
@@ -29,21 +38,25 @@ def test_security_workflow_runs_dependency_audit_as_blocking_gate() -> None:
 
 def test_security_workflow_runs_secret_scan_for_pull_requests_and_main_pushes() -> None:
     text = _workflow_text()
+    script = _script_text("secret-scan.sh")
 
     assert "secret-scan:" in text
-    assert "trufflesecurity/trufflehog" in text
-    assert "github.event_name == 'pull_request'" in text
-    assert "github.event_name == 'push'" in text
-    assert "--only-verified" in text
+    assert "scripts/ci/secret-scan.sh" in text
+    assert "  pull_request:" in text
+    assert "  push:" in text
+    assert "trufflesecurity/trufflehog" in script
+    assert "pull_request" in script
+    assert "--only-verified" in script
 
 
 def test_security_workflow_documents_blocking_policy() -> None:
     text = _workflow_text()
+    script = _script_text("secret-scan.sh")
 
     assert "blocking policy" in text.lower()
     assert "verified secrets block merges" in text.lower()
-    assert "fixtures" in text.lower()
-    assert "env-based auth" in text.lower()
+    assert "fixtures" in script.lower()
+    assert "env-based auth" in script.lower()
     secret_job = text.split("secret-scan:", 1)[1]
     assert "continue-on-error: true" not in secret_job
 
