@@ -1,0 +1,25 @@
+{
+  "repo": "vietairs/last30days-skill",
+  "legs": [
+    {
+      "check": "tests",
+      "os": "linux",
+      "script": ".github/ci/tests.sh",
+      "image": "python:3.12-bookworm",
+      "setup": "pip install --quiet uv"
+    },
+    {
+      "check": "Dependency audit",
+      "os": "linux",
+      "script": ".github/ci/dependency-audit.sh",
+      "image": "python:3.12-bookworm",
+      "setup": "pip install --quiet uv"
+    },
+    {
+      "check": "Secret scan",
+      "os": "linux",
+      "script": ".github/ci/secret-scan.sh",
+      "image": "python:3.12-bookworm"
+    }
+  ]
+}

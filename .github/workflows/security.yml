@@ -13,7 +13,8 @@ permissions:
 jobs:
   dependency-audit:
     name: Dependency audit
-    runs-on: ubuntu-latest
+    # Public fork: PRs from outside forks fall back to GitHub-hosted runners.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,26 +22,15 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Export locked dependency set
-        run: |
-          uv export \
-            --locked \
-            --all-groups \
-            --no-hashes \
-            --format requirements-txt \
-            --output-file /tmp/last30days-requirements.txt
-
       # Blocking policy: the clean baseline run is confirmed, so dependency
       # CVEs fail CI instead of landing as advisory-only log output.
-      - name: Run pip-audit against locked dependencies
-        run: uvx --python 3.12 pip-audit -r /tmp/last30days-requirements.txt --progress-spinner=off
+      - name: Export locked dependencies and run pip-audit
+        run: bash .github/ci/dependency-audit.sh
 
   secret-scan:
     name: Secret scan
-    runs-on: ubuntu-latest
+    # Public fork: PRs from outside forks fall back to GitHub-hosted runners.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64"]') }}
     steps:
       - name: Checkout full history for diff-aware scanning
         uses: actions/checkout@v4
@@ -49,14 +39,12 @@ jobs:
 
       # Blocking policy: verified secrets block merges on pull requests and
       # pushes to main after the clean baseline was confirmed.
-      # The TruffleHog action automatically scans the PR range for pull_request
-      # events and the pushed commit range for push events.
-      # Contributor policy: never commit real secrets in fixtures, tests, docs, or
-      # examples; use obvious dummy values and env-based auth patterns instead.
+      # The script runs the pinned TruffleHog binary (the action needs Docker,
+      # which the self-hosted Linux runner does not have).
       - name: Run TruffleHog OSS secret scan
-        if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        uses: trufflesecurity/trufflehog@v3.95.2
-        with:
-          path: ./
-          version: v3.95.2
-          extra_args: --only-verified
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+        run: bash .github/ci/secret-scan.sh
