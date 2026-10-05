@@ -49,6 +49,28 @@ def test_security_workflow_runs_secret_scan_for_pull_requests_and_main_pushes() 
     assert "--only-verified" in script
 
 
+def test_secret_scan_pull_request_range_passes_head_branch() -> None:
+    text = _workflow_text()
+    script = _script_text("secret-scan.sh")
+
+    # trufflehog stops at the base commit when no head is set, which can skip PR
+    # commits; the PR range must always pair --since-commit with --branch.
+    assert '--since-commit "$PR_BASE_SHA" --branch "$PR_HEAD_SHA"' in script
+    assert '--branch "$PUSH_AFTER"' in script
+    assert '--since-commit "$PUSH_BEFORE"' in script
+    assert "--github-actions" in script
+    secret_job = text.split("secret-scan:", 1)[1]
+    for name in ("PR_BASE_SHA", "PR_HEAD_SHA", "PUSH_BEFORE", "PUSH_AFTER"):
+        assert f"{name}: ${{{{ github.event." in secret_job
+
+
+def test_secret_scan_verifies_pinned_binary_checksum() -> None:
+    script = _script_text("secret-scan.sh")
+
+    assert "sha256sum -c" in script
+    assert "shasum -a 256 -c" in script
+
+
 def test_security_workflow_documents_blocking_policy() -> None:
     text = _workflow_text()
     script = _script_text("secret-scan.sh")

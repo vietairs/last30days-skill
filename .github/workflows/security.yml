@@ -44,4 +44,9 @@ jobs:
       # The script runs the pinned TruffleHog binary (the action needs Docker,
       # which the self-hosted Linux runner does not have).
       - name: Run TruffleHog OSS secret scan
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
         run: bash scripts/ci/secret-scan.sh
